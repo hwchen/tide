@@ -1,21 +1,43 @@
-use async_std::fs::File;
+// Notes for making this module runtime agnostic
+//
+// Blocking steps needed:
+// - Canonicalize path
+// - Open file which returns impl AsyncRead
+// - Get file metadata
+//
+// The last two are used to create the body. Packing them together would mean a fn would only need
+// to return (len, AsyncRead) instead of needing to return a file.
+//
+// Canonicalize returns a PathBuf
+
+use futures_io::AsyncRead;
 use futures_util::io::BufReader;
 use http_types::{Body, StatusCode};
 
 use crate::{Endpoint, Request, Response, Result};
 
+use std::io;
 use std::path::{Path, PathBuf};
 
 type BoxFuture<'a, T> = std::pin::Pin<Box<dyn std::future::Future<Output = T> + 'a + Send>>;
 pub struct ServeDir {
     prefix: String,
     dir: PathBuf,
+    canonicalize: Box<dyn Fn(&Path) -> BoxFuture<'static, io::Result<PathBuf>> + Sync + Send>,
+    file_open: Box<dyn Fn(&Path) -> BoxFuture<'static, io::Result<(usize, Box<dyn AsyncRead + Sync + Send + Unpin>)>> + Sync + Send>,
 }
 
 impl ServeDir {
     /// Create a new instance of `ServeDir`.
-    pub(crate) fn new(prefix: String, dir: PathBuf) -> Self {
-        Self { prefix, dir }
+    pub(crate) fn new<CA, FO>(prefix: String, dir: PathBuf, canonicalize: CA, file_open: FO) -> Self
+        where
+            CA: Fn(&Path) -> BoxFuture<'static, io::Result<PathBuf>> + Sync + Send + 'static,
+            FO: Fn(&Path) -> BoxFuture<'static, io::Result<(usize, Box<dyn AsyncRead + Sync + Send + Unpin>)>> + Sync + Send + 'static,
+    {
+        let canonicalize = Box::new(canonicalize);
+        let file_open = Box::new(file_open);
+
+        Self { prefix, dir, canonicalize, file_open }
     }
 }
 
@@ -31,7 +53,8 @@ impl<State> Endpoint<State> for ServeDir {
         log::info!("Requested file: {:?}", dir);
 
         Box::pin(async move {
-            let file = match async_std::fs::canonicalize(&dir).await {
+            let canonicalize = &self.canonicalize;
+            let (len, file) = match canonicalize(&dir).await {
                 Err(_) => {
                     // This needs to return the same status code as the
                     // unauthorized case below to ensure we don't leak
@@ -51,21 +74,14 @@ impl<State> Endpoint<State> for ServeDir {
                     }
 
                     // Open the file and send back the contents.
-                    match File::open(&file_path).await {
-                        Ok(file) => file,
+                    let file_open = &self.file_open;
+                    match file_open(&file_path).await {
+                        Ok((len, file)) => (len, file),
                         Err(_) => {
                             log::warn!("Could not open {:?}", file_path);
                             return Ok(Response::new(StatusCode::InternalServerError));
                         }
                     }
-                }
-            };
-
-            let len = match file.metadata().await {
-                Ok(metadata) => metadata.len() as usize,
-                Err(_) => {
-                    log::warn!("Could not retrieve metadata");
-                    return Ok(Response::new(StatusCode::InternalServerError));
                 }
             };
 

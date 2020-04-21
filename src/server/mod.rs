@@ -16,8 +16,7 @@ use crate::utils::BoxFuture;
 use crate::{Endpoint, Request, Response};
 
 mod route;
-// TODO figure out how to serve files agnostic to runtime
-//mod serve_dir;
+mod serve_dir;
 
 pub use route::Route;
 
