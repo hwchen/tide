@@ -1,10 +1,12 @@
 //! An HTTP server
 
-use async_std::future::Future;
-use async_std::io;
+use std::future::Future;
+use std::io;
 use async_std::net::ToSocketAddrs;
-use async_std::sync::Arc;
-use async_std::task::{Context, Poll};
+use std::sync::Arc;
+use std::task::{Context, Poll};
+use futures_io::{AsyncRead, AsyncWrite};
+use futures_util::stream::StreamExt;
 use http_service::HttpService;
 
 use std::fmt::Debug;
@@ -282,16 +284,52 @@ impl<State: Send + Sync + 'static> Server<State> {
     }
 
     /// Asynchronously serve the app at the given address.
-    #[cfg(feature = "h1-server")]
     pub async fn listen(self, addr: impl ToSocketAddrs) -> std::io::Result<()> {
         let listener = async_std::net::TcpListener::bind(addr).await?;
 
         let addr = format!("http://{}", listener.local_addr()?);
         log::info!("Server is listening on: {}", addr);
-        let mut server = http_service_h1::Server::new(addr, listener.incoming(), self);
 
-        server.run().await
+        let server = Arc::new(self);
+
+        while let Some(stream) = listener.incoming().next().await {
+            let stream = stream?;
+            async_std::task::spawn(accept(addr.clone(), server.clone(), stream));
+        }
+
+        Ok(())
     }
+}
+
+/// Accept a new connection.
+async fn accept<S, RW>(addr: String, service: Arc<S>, stream: RW) -> Result<(), http_types::Error>
+where
+    RW: AsyncRead + AsyncWrite + Clone + Send + Sync + Unpin + 'static,
+    S: HttpService,
+    <<S as HttpService>::ResponseFuture as Future>::Output: Send,
+    <S as HttpService>::Connection: Sync,
+{
+    let conn = service
+        .clone()
+        .connect()
+        .await
+        .map_err(|_| io::Error::from(io::ErrorKind::Other))?;
+
+    async_h1::accept(&addr, stream.clone(), |req| async {
+        let conn = conn.clone();
+        let service = service.clone();
+        async move {
+            let res = service
+                .respond(conn, req)
+                .await
+                .map_err(|_| io::Error::from(io::ErrorKind::Other))?;
+            Ok(res)
+        }
+        .await
+    })
+    .await?;
+
+    Ok(())
 }
 
 impl<State> Clone for Server<State> {
