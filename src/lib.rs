@@ -196,7 +196,7 @@ pub use middleware::{Middleware, Next};
 #[doc(inline)]
 pub use response::{IntoResponse, Response};
 #[doc(inline)]
-pub use server::{Route, Server};
+pub use server::{accept, Route, Server};
 
 #[doc(inline)]
 pub use http_types as http;
