@@ -6,9 +6,11 @@ use http_types::{
 use route_recognizer::Params;
 use serde::Deserialize;
 
-use async_std::io::{self, prelude::*};
-use async_std::task::{Context, Poll};
+use futures_core::task::{Context, Poll};
+use futures_io::AsyncRead;
+use futures_util::io::AsyncReadExt;
 
+use std::io;
 use std::pin::Pin;
 use std::{str::FromStr, sync::Arc};
 
@@ -309,7 +311,7 @@ impl<State> Request<State> {
     }
 }
 
-impl<State> Read for Request<State> {
+impl<State> AsyncRead for Request<State> {
     fn poll_read(
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,

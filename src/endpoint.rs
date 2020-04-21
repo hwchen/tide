@@ -1,6 +1,6 @@
 use crate::response::IntoResponse;
-use async_std::future::Future;
-use async_std::sync::Arc;
+use std::future::Future;
+use std::sync::Arc;
 use http_types::Result;
 
 use crate::middleware::Next;

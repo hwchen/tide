@@ -1,5 +1,5 @@
 use crate::{Request, Response};
-use async_std::io::BufReader;
+use futures_util::io::BufReader;
 use http_types::StatusCode;
 
 /// Conversion into a `Response`.

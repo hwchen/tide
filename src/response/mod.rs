@@ -1,4 +1,4 @@
-use async_std::io::prelude::*;
+use futures_util::io::AsyncBufRead;
 use std::convert::TryFrom;
 
 use cookie::Cookie;
@@ -41,7 +41,7 @@ impl Response {
     /// Create a new instance from a reader.
     pub fn with_reader<R>(status: u16, reader: R) -> Self
     where
-        R: BufRead + Unpin + Send + Sync + 'static,
+        R: AsyncBufRead + Unpin + Send + Sync + 'static,
     {
         let status = http_types::StatusCode::try_from(status).expect("invalid status code");
         let mut res = http_types::Response::new(status);
@@ -119,7 +119,7 @@ impl Response {
     /// The encoding is set to `application/octet-stream`.
     pub fn body<R>(mut self, reader: R) -> Self
     where
-        R: BufRead + Unpin + Send + Sync + 'static,
+        R: AsyncBufRead + Unpin + Send + Sync + 'static,
     {
         self.res
             .set_body(http_types::Body::from_reader(reader, None));

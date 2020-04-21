@@ -1,9 +1,11 @@
 use std::fmt::Debug;
-use std::io;
-use std::path::Path;
 use std::sync::Arc;
+// TODO for serving files in the future
+//use std::io;
+//use std::path::Path;
 
-use super::serve_dir::ServeDir;
+// TODO figure out how to serve files agnostic to runtime?
+//use super::serve_dir::ServeDir;
 use crate::endpoint::MiddlewareEndpoint;
 use crate::utils::BoxFuture;
 use crate::{router::Router, Endpoint, Middleware, Response};
@@ -128,13 +130,14 @@ impl<'a, State: 'static> Route<'a, State> {
     ///     Ok(())
     /// }
     /// ```
-    pub fn serve_dir(&mut self, dir: impl AsRef<Path>) -> io::Result<()> {
-        // Verify path exists, return error if it doesn't.
-        let dir = dir.as_ref().to_owned().canonicalize()?;
-        let prefix = self.path().to_string();
-        self.at("*").get(ServeDir::new(prefix, dir));
-        Ok(())
-    }
+// TODO figure out how to serve files agnostic to runtime
+//    pub fn serve_dir(&mut self, dir: impl AsRef<Path>) -> io::Result<()> {
+//        // Verify path exists, return error if it doesn't.
+//        let dir = dir.as_ref().to_owned().canonicalize()?;
+//        let prefix = self.path().to_string();
+//        self.at("*").get(ServeDir::new(prefix, dir));
+//        Ok(())
+//    }
 
     /// Add an endpoint for the given HTTP method
     pub fn method(&mut self, method: http_types::Method, ep: impl Endpoint<State>) -> &mut Self {

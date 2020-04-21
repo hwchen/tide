@@ -1,5 +1,5 @@
 use async_std::fs::File;
-use async_std::io::BufReader;
+use futures_util::io::BufReader;
 use http_types::{Body, StatusCode};
 
 use crate::{Endpoint, Request, Response, Result};
