@@ -1,22 +1,17 @@
-use async_std::fs::{self, File};
+use async_std::fs::File;
 use async_std::net::TcpListener;
 use async_std::task;
-use futures_core::future::{BoxFuture, Future};
+use futures_core::future::BoxFuture;
 use futures_io::AsyncRead;
-use futures_util::future::{FutureExt, TryFutureExt};
+use futures_util::future::FutureExt;
 use futures_util::stream::StreamExt;
 use std::io;
 use std::path::{Path, PathBuf};
-use std::pin::Pin;
 use std::sync::Arc;
 
 #[async_std::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     femme::start(log::LevelFilter::Info).unwrap();
-
-    //let canonicalize = |file_path| async {
-    //    Ok(fs::canonicalize(file_path).await?.into_os_string().into())
-    //}
 
     let mut app = tide::new();
     app.at("/").get(|_| async move { Ok("visit /src/*") });
@@ -37,19 +32,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn file_open(file_path: &Path) -> BoxFuture<'static, io::Result<(usize, Box<dyn AsyncRead + Sync + Send + Unpin>)>>
-{
-//    let len_file = File::open(&file_path)
-//        .and_then(|file| {
-//            file.metadata()
-//                .and_then(|metadata| {
-//                    (metadata.len() as usize, Box::new(file))
-//                })
-//        });
-//
-//
-    //Box::pin(futures_util::future::ready(len_file))
-    Box::pin(futures_util::future::ok((1, Box::new(File::open(file_path).map(|f|f.unwrap())) as Box<AsyncRead + Sync + Send + Unpin>)))
+fn file_open(file_path: &'static Path) -> BoxFuture<'static, io::Result<(usize, Box<dyn AsyncRead + Sync + Send + Unpin>)>> {
+    let len_file = File::open(&file_path)
+        .then(|file| {
+            let file = file.unwrap();
+            file.metadata()
+                .map(|metadata| {
+                    Ok((
+                        metadata.unwrap().len() as usize,
+                        Box::new(file) as Box<dyn AsyncRead + Sync + Send + Unpin>
+                    ))
+                })
+        });
+
+    let boxed = Box::new(len_file) as Box<dyn std::future::Future<Output=io::Result<(usize, Box<dyn AsyncRead + Sync + Send + Unpin + 'static>)>> + Send>;
+
+    unsafe {
+        use std::pin::Pin;
+        Pin::new_unchecked(boxed)
+    }
+    //Box::pin(futures_util::future::ok(len_file))
+    //Box::pin(File::open(file_path).map(|f|f.unwrap())) as Box<dyn AsyncRead + Sync + Send + Unpin>)))
 }
 
 fn canonicalize(file_path: &Path) -> BoxFuture<'static, io::Result<PathBuf>> {
@@ -60,3 +63,7 @@ fn canonicalize(file_path: &Path) -> BoxFuture<'static, io::Result<PathBuf>> {
     Box::pin(futures_util::future::ok(PathBuf::from("a_path")))
 }
 
+// Still failed. Probably need to not pass in bare closures, it gets too complicated. See how
+// actix-web turns a closure into a Service: https://github.com/actix/actix-web/blob/master/src/route.rs#L226
+// But that's a lot of type programming. Probably best to just implement it myself each time I need
+// it. Just use the current one as an example.
